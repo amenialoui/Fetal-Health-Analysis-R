@@ -1,0 +1,322 @@
+---
+title: "Fetal Health Classification"
+author: "Aloui Ameni Roua Riahi"
+date: "2023-05-19"
+output: html_document
+---
+
+
+** Description of Dataset **
+
+This dataset contains 2126 records of features extracted from Cardiotocogram exams, which were then classified by expert obstetrician into 3 classes: "Normal", "Suspect" and "Pathological". The features included in this study are the following:
+
+baseline value: Baseline Fetal Heart Rate (FHR) (beats per minute)
+accelerations: Number of accelerations per second
+fetal_movement: Number of fetal movements per second
+uterine_contractions: Number of uterine contractions per second
+light_decelerations: Number of light decelerations (LDs) per second
+severe_decelerations: Number of severe decelerations (SDs) per second
+prolongued_decelerations: Number of prolonged decelerations (PDs) per second
+abnormal_short_term_variability: Percentage of time with abnormal short term variability
+mean_value_of_short_term_variability: Mean value of short term variability
+percentage_of_time_with_abnormal_long_term_variability: Percentage of time with abnormal long term variability
+mean_value_of_long_term_variability: Mean value of long term variability
+histogram_width: Width of histogram made using all values from a record
+histogram_min: Histogram minimum value
+histogram_max: Histogram maximum value
+histogram_number_of_peaks: Number of peaks in the exam histogram
+histogram_number_of_zeroes: Number of zeros in the exam histogram
+histogram_mode: Histogram mode
+histogram_mean: Histogram mean
+histogram_median: Histogram median
+histogram_variance: Histogram variance
+histogram_tendency: Histogram tendency
+fetal_health: Encoded as 1-Normal; 2-Suspect; 3-Pathological Which is our target column.
+```{r}
+library(tidyverse)
+library(kableExtra)
+library(skimr)
+library(corrplot)
+library(e1071)
+library(caret)
+library(gbm)
+library(MASS)
+library(ggplot2)
+```
+
+```{r }
+data=read.csv("C://Users//aloui//OneDrive//Bureau//Ameni//R//projetFoetus//Projet//fetal_health.csv",sep=',',dec='.')
+View(data)
+head(data)
+
+```
+
+** Data cleansing **
+
+First of all we'll be checking if there are any missing values or categorical variables.
+```{r}
+str(data)
+colSums(is.na(data))
+
+```
+All of the variables are numeric, we'll be transforming our target into factor.There is no missing value. 
+
+```{r}
+data$fetal_health=as.factor(data$fetal_health)
+str(data$fetal_health)
+```
+
+** Exploratory Data Analysis **
+
+```{r}
+target <- 'fetal_health'
+data[,target] <- as.factor(data[,target])
+plot(data[,target])
+grid()
+
+```
+Next comes visualization of the dataset features and their relations to the target fetal_health. The following  figure portray sets of feature boxplots by classes of fetal_health. In general, the boxplots reveal clear class-related differences in the distributions of the features.
+
+```{r}
+data_long <- gather(data, key = 'variable', value = 'value', -fetal_health)
+
+# Créer le graphique
+ggplot(data_long, aes(x = '', y = value, fill = fetal_health)) +
+  facet_wrap(~ variable, scales = 'free') +
+  geom_boxplot() +
+  coord_flip() +
+  labs(x = NULL, y = NULL) +
+  theme(axis.text.x = element_text(angle = 45)) +
+  scale_fill_manual(name = 'Fetal health',
+                    guide = guide_legend(reverse = TRUE),
+                    labels = c('Normal (1)', 'Suspect (2)', 'Pathological (3)'),
+                    values = c('forestgreen', 'gold', 'red'))
+
+
+```
+
+Correlation
+
+```{r}
+library(corrgram)
+library(corrplot)
+x <- data[, sapply(data, is.numeric)]
+corr=cor(x)
+corrplot(corr, method="circle",tl.cex=0.6)
+```
+
+From figures, we can find “histogram_mean”, “histogram_mode” and “histogram_median” have high correlations value. We also notice a high correlation between these three and  “baseline.value”. Moreover, “histogram_width” has high correlation with “histogram_max” and “histogram_number_of_peaks”.
+
+
+
+** Data Standardization **
+
+Before strating we will do a feature standardization to helps adjust all data elements to a common scale in order to improve the performance of PCA and prediction.
+
+```{r}
+data_new=scale(data[,-22])
+head(data_new,2)
+data=data.frame(data_new,data[22])
+View(data)
+str(data)
+```
+
+** Principal Component Analysis(PCA) **
+
+We removed the fetal_health column which is not necessary for the  PCA.
+```{r warning=FALSE}
+library(FactoMineR)
+pca.data=PCA(data_new,graph = FALSE)
+pca.data$eig
+```
+
+```{r}
+library(factoextra)
+fviz_screeplot(pca.data)
+
+```
+ We are going to choose the elbow criterion for the choice of the number of dimensions, the offset is between the 3rd and the 4th component, we will then retain the first 3 components.
+
+* Study of variables *
+
+```{r}
+fviz_pca_var(pca.data,c(1,2))
+fviz_pca_var(pca.data,c(2,3))
+```
+
+```{r}
+pca.data$var$coord
+round(pca.data$var$cos2,3)
+round(pca.data$var$contrib,3)
+```
+Based on these results, the contributions of the components in each dimension are clear. dim1 consists of "histogram_width", "histogram_min" and ect. To visualize, we will also draw the contribution of the plot variables.
+
+
+```{r}
+fviz_contrib(pca.data,'var',axes = 1)
+fviz_contrib(pca.data,'var',axes = 2)
+fviz_contrib(pca.data,'var',axes = 3)
+```
+Study of individuals
+
+```{r}
+fviz_pca_ind(pca.data,col.ind = 'cos2',geom = 'point')
+fviz_pca_ind(pca.data,geom.ind = "point", repel = TRUE,col.ind = "contrib")
+
+```
+* Visualisations pour la valeur de groupe (fetal_health) *
+
+Cette fois, Nous allons visualisez non seulement les observations et les variables, mais nous allons différenciez Fetal_health (1-Normal, 2-Suspect, 3-Pathological).
+
+```{r}
+
+```
+
+We find that:
+
+Group 3, which is pathological, has important variables “severe decelerations” and “prolonged_decelerations”, which indicates fetal health problems.
+
+group 2 which is suspected of being unhealthy has the variables "abnormal_short_term_variability", "percentage_of_time.." and histogram_min" which show signs of suspected health problems.
+
+group 1 which is normal has larger residual variables.
+
+then, we also see that the observations of group 3 (pathological) are more spread out and the variance rather greater than in the other groups.
+
+Logistic Regression
+```{r}
+colnames(data)
+```
+
+```{r}
+set.seed(123)
+x2<-sample(c(1:nrow(data)), 0.8*nrow(data))
+training=data[x2,]
+training
+test=data[-x2,]
+library(nnet)
+library(MASS)
+
+# Fit the model
+model <- nnet::multinom(fetal_health ~., data = training)
+# Summarize the model
+summary(model)
+modele.backward <- stepAIC(model, ~. , trace = TRUE, data = training, direction = "backward")
+
+
+```
+the selcted model is the following: 
+fetal_health ~ baseline.value + uterine_contractions + 
+    prolongued_decelerations + abnormal_short_term_variability + 
+    percentage_of_time_with_abnormal_long_term_variability + 
+    mean_value_of_long_term_variability + histogram_width + histogram_min + 
+    histogram_mode + histogram_mean+histogram_variance  
+    +fetal_movement+histogram_number_of_peaks+accelerations 
+prediction:
+
+```{r warning=FALSE}
+library(magrittr)
+test2=test[,-22]
+#predictions <- predict(selected_model, newdata = test_data, type = "class")
+predicted.classes <- modele.backward %>% predict(test2)
+head(predicted.classes)
+table_pred <- table(predicted.classes)
+print(table_pred)
+table(test$fetal_health)
+
+
+```
+
+```{r}
+
+accuracyLG <- sum(as.character(predicted.classes) == as.character(test$fetal_health)) / length(predicted.classes)
+accuracyLG
+
+```
+
+Decision Tree
+
+```{r}
+set.seed(123)
+library(rpart)
+library(rpart.plot)
+Tree <- rpart(fetal_health ~., data = training, method = "class")
+TC=Tree$cptable
+which.min(TC[,4])# l'erreur minimale 
+optcp=TC[which.min(TC[,4]),1]# optimal CP ( la valeur de CP qui correspond à l'erreur minimale)
+opnsplit=TC[which.min(TC[,4]),2] # Nb de split(divisions) optimal 
+opnsplit
+
+#TOptimal <- rpart(survived~., data=ptitanic, cp=optcp, control=rpart.control(minsplit =opnsplit ))# arbre optimal
+TOptimale<-rpart(fetal_health~.,data=training, cp=optcp, control=rpart.control(minsplit =opnsplit ))
+rpart.plot(TOptimale)
+
+
+
+```
+
+```{r warning=FALSE}
+#pred=predict(TOptimal,test,type ="vector")
+#pred
+#table(pred)# les classes prédites
+pred=predict(TOptimale,test2, type = "class")
+table(test$fetal_health)# les classes réelles
+table_pred <- table(pred)
+print(table_pred)
+
+library(caret)
+TC2 <- confusionMatrix(pred, test$fetal_health)
+accuracy <- TC2$overall['Accuracy']
+
+print(TC2$table)
+print(accuracy)
+#TC2=table(test$fetal_health,table_pred)# confusion matrix ( Y réel vs Y prédit )
+#accuracy <- sum(pred == (test$fetal_health)) / length(pred)
+#accuracy
+
+
+```
+Random Forest
+```{r warning=FALSE}
+set.seed(123)
+library(randomForest)
+modelRF <- randomForest(fetal_health ~ ., data = training)
+predictForest = predict(modelRF, newdata = test2)
+table(test$fetal_health, predictForest)
+
+accuracyRF <- sum(as.character(predictForest) == as.character(test$fetal_health)) / length(predictForest)
+accuracyRF
+#library(caret)
+#TC2 <- confusionMatrix(predictForest, test$fetal_health)
+#accuracy <- TC2$overall['Accuracy']
+
+#print(TC2$table)
+#print(accuracy)
+
+```
+k-Means
+
+```{r}
+set.seed(123)
+fetal_clust <- kmeans(training[,-22], centers = 3)
+summary(fetal_clust)
+cluster_assignments <-fetal_clust$cluster#Cluster number for each of the observations
+head(cluster_assignments, 4)
+actual_labels <- training$fetal_health
+classification_accuracy <- sum(cluster_assignments == actual_labels) / length(actual_labels)
+print(classification_accuracy)
+
+```
+Modele comparison
+
+```{r}
+
+all_accuracies <- as.data.frame(rbind(LG = accuracyLG, DT = accuracy, RF = accuracyRF, km=classification_accuracy ))
+all_accuracies$model <- rownames(all_accuracies)
+ggplot(all_accuracies, aes(x = model, y = Accuracy, fill = model)) +
+  geom_bar(stat="identity") +
+  ggtitle('Comparison of Overall Model Accuracy') +
+  geom_text(aes(label = round(Accuracy,2)) , 
+            colour = "white", size = 4,
+            vjust = 1.5, position = position_dodge(.9))
+```
+
